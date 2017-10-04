@@ -48,7 +48,7 @@
 #define BEFFER_LENGTH_MAX    256
 
 #define MAC_COMMAND_FLAG    "MACCMD:"
-
+#define kLOCAL_BUFF_MAX     64
 
 enum _class_type_t { CLASS_A = 0, CLASS_C };
 enum _physical_type_t { EU434 = 0, EU868, US915, AU920 };
@@ -313,7 +313,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
-        void setDeciveMode(_device_mode_t mode);
+        bool setDeviceMode(_device_mode_t mode);
         
         /**
          *  \brief Set device join a network
@@ -350,7 +350,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
-        void setReceiceWindowFirst(bool command);
+        void setReceiveWindowFirst(bool command);
         /**
          *  \brief Set receice window 1 channel mapping
          *  
@@ -359,7 +359,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
-        void setReceiceWindowFirst(unsigned char channel, float frequency);
+        void setReceiveWindowFirst(unsigned char channel, float frequency);
         
         /**
          *  \brief Set receice window 2 channel mapping
@@ -369,7 +369,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
-        void setReceiceWindowSecond(float frequency, _data_rate_t dataRate);
+        void setReceiveWindowSecond(float frequency, _data_rate_t dataRate);
         /**
          *  \brief Set receice window 2 channel mapping
          *  
@@ -379,7 +379,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
-        void setReceiceWindowSecond(float frequency, _spreading_factor_t spreadingFactor, _band_width_t bandwidth);
+        void setReceiveWindowSecond(float frequency, _spreading_factor_t spreadingFactor, _band_width_t bandwidth);
         
         /**
          *  \brief Set receice window delay
@@ -389,7 +389,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
-        void setReceiceWindowDelay(_window_delay_t command, unsigned short _delay);
+        void setReceiveWindowDelay(_window_delay_t command, unsigned short _delay);
         
         /**
          *  \brief Set LoRaWAN class type
@@ -485,6 +485,7 @@ class LoRaWanClass
     private:
         void sendCommand(char *command);
         short readBuffer(char* buffer, short length, unsigned char timeout = DEFAULT_TIMEOUT);
+        short readLine(char* buffer, short length, unsigned char timeout = DEFAULT_TIMEOUT);
         short waitForResponse(char* response, unsigned char timeout = DEFAULT_TIMEOUT);
         short sendCommandAndWaitForResponse(char* command, char *response, unsigned char timeout = DEFAULT_TIMEOUT);
         

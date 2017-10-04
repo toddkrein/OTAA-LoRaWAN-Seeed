@@ -15,6 +15,7 @@ void setup(void)
     while(!SerialUSB);
     
     lora.init();
+    lora.setDeviceReset();
     
     memset(buffer, 0, 256);
     lora.getVersion(buffer, 256, 1);
@@ -24,15 +25,22 @@ void setup(void)
     lora.getId(buffer, 256, 1);
     SerialUSB.print(buffer);
 
+    lora.setId(NULL, NULL, "70b3d57ed0006fcc");      // set App key, from TTN device overview
+
     // ???
     lora.setKey("039CBB775BFF1AC59FFFBCA9BC5DEC52",     // NetSKEY
                 "9D3F0252CA11CC6920F36DE215748093",     // AppSKEY
                 "ce3889feb09fa4b536ee9c41ba863364");    // AppKey
     
-    lora.setDeciveMode(LWOTAA);               // Over The Air Activation
+    if (lora.setDeviceMode(LWOTAA) == false)               // Over The Air Activation
+      SerialUSB.print("Set Mode to OTAA failed.\n");
+    else
+      SerialUSB.print("OTAA mode set.\n");
+      
 //    lora.setDeciveMode(LWABP);              // pre-shared keys
     lora.setDataRate(DR0, US915);
     lora.setAdaptiveDataRate(true); 
+    lora.setReceiveWindowFirst(true);
     
 
 #ifdef DEAD1
@@ -55,7 +63,7 @@ void setup(void)
     
     lora.setReceiceWindowSecond(923.3, DR0);
 
-#else
+#elif DEAD2
 
     for (i=0; i < 16; i++)          // should be 72
       lora.setChannel(i, 902.3 + ((float)i) * 0.2);
@@ -75,20 +83,46 @@ void setup(void)
     lora.setReceiceWindowSecond(923.3, DR8);      // 2.2.7
 
 #endif 
-    lora.setPower(20);
+
+    lora.setReceiveWindowSecond(923.3, DR8);      // 2.2.7
+    lora.setPower(14);
+
+//    lora.loraDebug();
+    SerialUSB.print("Starting OTTA Join.\n");
+    loopcount = 0;
+    while(true) {
+      loopcount++;
+      if (lora.setOTAAJoin(JOIN))
+        break;
+    }
+
+    SerialUSB.print("Took ");
+    SerialUSB.print(loopcount);
+    SerialUSB.println(" tries to join.");
     
-//    while(!lora.setOTAAJoin(JOIN));
+    if (lora.transferPacket("Start!", 1) == false) {
+      SerialUSB.print("packet transmit failed.\n");
+    }
 
+    if(SerialUSB.available()) {
+      SerialUSB.print("--Entering Debug--\n");
+      lora.loraDebug();
+      SerialUSB.print("--Exit Debug--\n");
+    }
+  
   loopcount = 0;
-
-     lora.transferPacket("Start!", 1);
-
 }
 
 void loop(void)
 {   
     bool result = false;
-    
+
+    if(SerialUSB.available()) {
+      SerialUSB.print("--Entering Debug--\n");
+      lora.loraDebug();
+      SerialUSB.print("--Exit Debug--\n");
+    }
+
     //result = lora.transferPacket("Hello W!", 10);
     data[5]++;
     result = lora.transferPacket(data, 6, 10);

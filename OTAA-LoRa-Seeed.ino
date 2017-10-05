@@ -16,6 +16,8 @@ void setup(void)
     
     lora.init();
     lora.setDeviceReset();
+
+    Serial.begin(9600);     // open the GPS
     
     memset(buffer, 0, 256);
     lora.getVersion(buffer, 256, 1);
@@ -100,7 +102,7 @@ void setup(void)
     SerialUSB.print(loopcount);
     SerialUSB.println(" tries to join.");
     
-    if (lora.transferPacket("Start!", 1) == false) {
+    if (lora.transferPacketWithConfirmed("Start!", 1) == false) {
       SerialUSB.print("packet transmit failed.\n");
     }
 
@@ -117,6 +119,9 @@ void loop(void)
 {   
     bool result = false;
 
+    while (Serial.available())
+      SerialUSB.write(Serial.read());
+
     if(SerialUSB.available()) {
       SerialUSB.print("--Entering Debug--\n");
       lora.loraDebug();
@@ -125,7 +130,7 @@ void loop(void)
 
     //result = lora.transferPacket("Hello W!", 10);
     data[5]++;
-    result = lora.transferPacket(data, 6, 10);
+    result = lora.transferPacketWithConfirmed(data, 6, 10);
     
     if(result)
     {

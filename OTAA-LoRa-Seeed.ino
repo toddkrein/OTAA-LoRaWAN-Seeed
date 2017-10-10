@@ -1,6 +1,12 @@
 
+#define USE_GPS 1
+
 #include "LoRaWan.h"
 
+#ifdef USE_GPS
+#include "TinyGPS++.h"
+TinyGPSPlus gps;
+#endif
 
 unsigned char data[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA,};
 char buffer[256];
@@ -10,6 +16,10 @@ int loopcount = 0;
 void setup(void)
 {
     int i;
+    char c;
+#ifdef USE_GPS
+    bool locked;
+#endif
     
     SerialUSB.begin(115200);
     while(!SerialUSB);
@@ -17,7 +27,34 @@ void setup(void)
     lora.init();
     lora.setDeviceReset();
 
+#ifdef USE_GPS
     Serial.begin(9600);     // open the GPS
+    locked = false;
+
+    // For S&G, let's get the GPS fix now, before we start running arbitary
+    // delays for the LoRa section
+
+    while (!gps.location.isValid()) {
+      while (Serial.available() > 0) {
+        if (gps.encode(c=Serial.read())) {
+          displayInfo();
+          locked = true;
+          break;
+        }
+//        SerialUSB.print(c);
+      }
+
+      if (locked)
+        break;
+        
+      if (millis() > 15000 && gps.charsProcessed() < 10)
+      {
+        SerialUSB.println(F("No GPS detected: check wiring."));
+        SerialUSB.println(gps.charsProcessed());
+        while(true);
+      }      
+    }
+#endif
     
     memset(buffer, 0, 256);
     lora.getVersion(buffer, 256, 1);
@@ -84,6 +121,10 @@ void setup(void)
     
     lora.setReceiceWindowSecond(923.3, DR8);      // 2.2.7
 
+#elif DEAD3
+    for (i=8; i<72; i++)
+      lora.setChannel(i,0);
+      
 #endif 
 
     lora.setReceiveWindowSecond(923.3, DR8);      // 2.2.7
@@ -117,10 +158,12 @@ void setup(void)
 
 void loop(void)
 {   
+    String gpsResult;
     bool result = false;
-
-    while (Serial.available())
-      SerialUSB.write(Serial.read());
+    char c;
+    String lat, lon;
+    char gpsBuf[128];
+    char i;
 
     if(SerialUSB.available()) {
       SerialUSB.print("--Entering Debug--\n");
@@ -157,5 +200,53 @@ void loop(void)
         }
     }
 }
+void displayInfo()
+{
+  SerialUSB.print(F("Location: ")); 
+  if (gps.location.isValid())
+  {
+    SerialUSB.print(gps.location.lat(), 6);
+    SerialUSB.print(F(","));
+    SerialUSB.print(gps.location.lng(), 6);
+  }
+  else
+  {
+    SerialUSB.print(F("INVALID"));
+  }
 
+  SerialUSB.print(F("  Date/Time: "));
+  if (gps.date.isValid())
+  {
+    SerialUSB.print(gps.date.month());
+    SerialUSB.print(F("/"));
+    SerialUSB.print(gps.date.day());
+    SerialUSB.print(F("/"));
+    SerialUSB.print(gps.date.year());
+  }
+  else
+  {
+    SerialUSB.print(F("INVALID"));
+  }
 
+  SerialUSB.print(F(" "));
+  if (gps.time.isValid())
+  {
+    if (gps.time.hour() < 10) SerialUSB.print(F("0"));
+    SerialUSB.print(gps.time.hour());
+    SerialUSB.print(F(":"));
+    if (gps.time.minute() < 10) SerialUSB.print(F("0"));
+    SerialUSB.print(gps.time.minute());
+    SerialUSB.print(F(":"));
+    if (gps.time.second() < 10) SerialUSB.print(F("0"));
+    SerialUSB.print(gps.time.second());
+    SerialUSB.print(F("."));
+    if (gps.time.centisecond() < 10) SerialUSB.print(F("0"));
+    SerialUSB.print(gps.time.centisecond());
+  }
+  else
+  {
+    SerialUSB.print(F("INVALID"));
+  }
+
+  SerialUSB.println();
+}

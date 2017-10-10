@@ -34,6 +34,7 @@
 LoRaWanClass::LoRaWanClass(void)
 {
     memset(_buffer, 0, 256);
+    debug = false;
 }
 
 void LoRaWanClass::init(void)
@@ -190,10 +191,13 @@ void LoRaWanClass::setChannel(unsigned char channel, float frequency)
 {
     char cmd[32];
     
-    if(channel > 16) channel = 16;
+//    if(channel > 16) channel = 16;      // ??? this is wrong for US915
     
     memset(cmd, 0, 32);
-    sprintf(cmd, "AT+CH=%d,%d.%d\r\n", channel, (short)frequency, short(frequency * 10) % 10);
+    if (frequency == 0)
+      sprintf(cmd, "AT+CH=%d,0\r\n", channel); 
+    else   
+      sprintf(cmd, "AT+CH=%d,%d.%d\r\n", channel, (short)frequency, short(frequency * 10) % 10);
     sendCommand(cmd);
 #if _DEBUG_SERIAL_
     loraDebugPrint(DEFAULT_DEBUGTIME);
@@ -634,6 +638,8 @@ bool LoRaWanClass::setOTAAJoin(_otaa_join_cmd_t command, unsigned char timeout)
         continue;
       if (strstr(_buffer, "+JOIN: Done"))
         break;
+      if (strstr(_buffer, "+JOIN: No free channel"))
+        break;
       if (strstr(_buffer, "+JOIN: Network joined")) {
         joined = true;
         continue;
@@ -785,6 +791,8 @@ short LoRaWanClass::getBatteryVoltage(void)
 }
 
 // ??? I think this essentially connects the serial port to the LoRa module.
+//  !!! Note that there is no way to exit from this
+//
 void LoRaWanClass::loraDebug(void)
 {
     while (true) {
@@ -797,15 +805,22 @@ void LoRaWanClass::loraDebug(void)
 void LoRaWanClass::loraDebugPrint(unsigned char timeout)
 {
     unsigned long timerStart, timerEnd;
+    char c;
 
     timerStart = millis();
     
     while(1)
     {
-        while(SerialLoRa.available()) SerialUSB.write(SerialLoRa.read());  
+        while(SerialLoRa.available()) {
+          SerialUSB.write(c = SerialLoRa.read()); 
+          if (c == '\n')
+            return;                 // !!! This won't work for commands that return multiple lines. 
+        }
         
         timerEnd = millis();
-        if(timerEnd - timerStart > 1000 * timeout)break;
+//        if(timerEnd - timerStart > 1000 * timeout)break;
+        if(timerEnd - timerStart > timeout)
+          break;
     }
 }
 #endif

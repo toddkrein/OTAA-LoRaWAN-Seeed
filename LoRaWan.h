@@ -39,8 +39,8 @@
 #define _DEBUG_SERIAL_      1
 //#define DEFAULT_TIMEOUT     5 // second
 #define DEFAULT_TIMEOUT     3 // second
-#define DEFAULT_TIMEWAIT    100 // millisecond
-#define DEFAULT_DEBUGTIME   1 // second
+#define DEFAULT_TIMEWAIT    100 // milliseconds to wait after issuing command via serial
+#define DEFAULT_DEBUGTIME   250 // milliseconds to wait for a response after command
 
 #define BATTERY_POWER_PIN    A4
 #define CHARGE_STATUS_PIN    A5
@@ -490,6 +490,7 @@ class LoRaWanClass
         short sendCommandAndWaitForResponse(char* command, char *response, unsigned char timeout = DEFAULT_TIMEOUT);
         
         char _buffer[256];
+        short debug;
 
 };
 

@@ -1,3 +1,9 @@
+//
+//  Based initially on the OTAA-LoRa-Seeed sketch, but I've
+//  pretty much gutted it.
+//
+//  Copywrite (c) 2017  Todd Krein.   All Rights Reserved.
+//
 
 #define USE_GPS 1
 
@@ -12,6 +18,9 @@ unsigned char data[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA,};
 char buffer[256];
 
 int loopcount = 0;
+
+int sentCount;
+int ackCount;
 
 void setup(void)
 {
@@ -38,21 +47,27 @@ void setup(void)
       while (Serial.available() > 0) {
         if (gps.encode(c=Serial.read())) {
           displayInfo();
-          locked = true;
-          break;
+          if (gps.location.isValid()) {
+//            locked = true;
+            break;
+          }
         }
 //        SerialUSB.print(c);
       }
 
-      if (locked)
-        break;
+//      if (locked)
+//        break;
         
       if (millis() > 15000 && gps.charsProcessed() < 10)
       {
         SerialUSB.println(F("No GPS detected: check wiring."));
         SerialUSB.println(gps.charsProcessed());
         while(true);
-      }      
+      } 
+      else if (millis() > 20000) {
+        SerialUSB.println(F("Not able to get a fix in alloted time."));     
+        break;
+      }
     }
 #endif
     
@@ -77,93 +92,45 @@ void setup(void)
       SerialUSB.print("OTAA mode set.\n");
       
 //    lora.setDeciveMode(LWABP);              // pre-shared keys
-    lora.setDataRate(DR0, US915);
+    lora.setDataRate(DR0, US915HYBRID);             // This resets all the CH and RXWIN1 values
     lora.setAdaptiveDataRate(true); 
-    lora.setReceiveWindowFirst(true);
-    
 
-#ifdef DEAD1
-    lora.setChannel(0, 903.9);
-    lora.setChannel(1, 904.1);
-    lora.setChannel(2, 904.3);
-    lora.setChannel(3, 904.5);
-    lora.setChannel(4, 904.7);
-    lora.setChannel(5, 904.9);
-    lora.setChannel(6, 905.3);
-  
-    lora.setReceiceWindowFirst(1);                  // enable downstream channels
-    lora.setReceiceWindowFirst(0, 923.3);      // set frquecies. From https://www.thethingsnetwork.org/wiki/LoRaWAN/Frequencies/Frequency-Plans
-    lora.setReceiceWindowFirst(1, 923.9);      
-    lora.setReceiceWindowFirst(2, 924.5);
-    lora.setReceiceWindowFirst(3, 925.1);
-    lora.setReceiceWindowFirst(4, 925.7);
-    lora.setReceiceWindowFirst(5, 926.3);
-    lora.setReceiceWindowFirst(6, 927.5);
-    
-    lora.setReceiceWindowSecond(923.3, DR0);
-
-#elif DEAD2
-
-    for (i=0; i < 16; i++)          // should be 72
-      lora.setChannel(i, 902.3 + ((float)i) * 0.2);
-  
-    lora.setReceiceWindowFirst(1);                  // enable downstream channels
-    for (i=0; i<16; i+=8) {
-      lora.setReceiceWindowFirst(i+0, 923.3);      // set frquecies. 2.2.2
-      lora.setReceiceWindowFirst(i+1, 923.9);      
-      lora.setReceiceWindowFirst(i+2, 924.5);
-      lora.setReceiceWindowFirst(i+3, 925.1);
-      lora.setReceiceWindowFirst(i+4, 925.7);
-      lora.setReceiceWindowFirst(i+5, 926.3);
-      lora.setReceiceWindowFirst(i+6, 926.9);
-      lora.setReceiceWindowFirst(i+7, 927.5);
-    }
-    
-    lora.setReceiceWindowSecond(923.3, DR8);      // 2.2.7
-
-#elif DEAD3
-    for (i=8; i<72; i++)
-      lora.setChannel(i,0);
+//    lora.getChannel();
+//    lora.getReceiveWindowFirst();
       
-#endif 
-
-    lora.setReceiveWindowSecond(923.3, DR8);      // 2.2.7
+    lora.setReceiveWindowSecond(923.3, DR8);      // 2.2.7  Second receive window
     lora.setPower(14);
 
-//    lora.loraDebug();
+//    lora.getChannel();
+//    lora.getReceiveWindowFirst();
+    
     SerialUSB.print("Starting OTTA Join.\n");
     loopcount = 0;
     while(true) {
       loopcount++;
       if (lora.setOTAAJoin(JOIN))
         break;
+//      lora.getChannel();
+//      lora.getReceiveWindowFirst();
     }
 
     SerialUSB.print("Took ");
     SerialUSB.print(loopcount);
     SerialUSB.println(" tries to join.");
-    
-    if (lora.transferPacketWithConfirmed("Start!", 1) == false) {
-      SerialUSB.print("packet transmit failed.\n");
-    }
 
-    if(SerialUSB.available()) {
-      SerialUSB.print("--Entering Debug--\n");
-      lora.loraDebug();
-      SerialUSB.print("--Exit Debug--\n");
-    }
-  
+    lora.getChannel();
+    lora.getReceiveWindowFirst();
+
   loopcount = 0;
+  sentCount = 0;
+  ackCount = 0;
 }
 
+    
 void loop(void)
 {   
-    String gpsResult;
     bool result = false;
-    char c;
-    String lat, lon;
-    char gpsBuf[128];
-    char i;
+
 
     if(SerialUSB.available()) {
       SerialUSB.print("--Entering Debug--\n");
@@ -171,15 +138,16 @@ void loop(void)
       SerialUSB.print("--Exit Debug--\n");
     }
 
-    //result = lora.transferPacket("Hello W!", 10);
-    data[5]++;
-    result = lora.transferPacketWithConfirmed(data, 6, 10);
-    
+    lora.transferPacket("mud", 10);
+    result = lora.transferPacketWithConfirmed("Testing", 10); 
+    sentCount++;
+           
     if(result)
     {
         short length;
         short rssi;
         
+        ackCount++;      
         memset(buffer, 0, 256);
         length = lora.receivePacket(buffer, 256, &rssi);
         
@@ -199,7 +167,17 @@ void loop(void)
             SerialUSB.println();
         }
     }
+    else {
+      SerialUSB.print("Send failure\n");
+    }
+
+    SerialUSB.print("Sent/ack ");
+    SerialUSB.print(sentCount);
+    SerialUSB.print("/");
+    SerialUSB.println(ackCount);
+    delay(2000);
 }
+
 void displayInfo()
 {
   SerialUSB.print(F("Location: ")); 

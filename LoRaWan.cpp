@@ -1,11 +1,12 @@
 /*
   LoRaWAN.cpp
   2013 Copyright (c) Seeed Technology Inc.  All right reserved.
-
-  Author: Wayne Weng
+  2017 Copyright (c) Todd Krein. All rights reserved.
+  
+  Original Author: Wayne Weng
   Date: 2016-10-17
 
-  add rgb backlight fucnction @ 2013-10-15
+  Greatly overhauled 2017 by Todd Krein (todd@krein.org)
   
   The MIT License (MIT)
 
@@ -30,6 +31,7 @@
 
 #include "LoRaWan.h"
 
+const char *physTypeStr[10] = {"EU434", "EU868", "US915", "US915HYBRID", "AU915", "AS923", "CN470", "KR920", "CN470PREQUEL", "STE920"};
 
 LoRaWanClass::LoRaWanClass(void)
 {
@@ -129,14 +131,27 @@ void LoRaWanClass::setKey(char *NwkSKey, char *AppSKey, char *AppKey)
     }
 }
 
-void LoRaWanClass::setDataRate(_data_rate_t dataRate, _physical_type_t physicalType)
+bool LoRaWanClass::setDataRate(_data_rate_t dataRate, _physical_type_t physicalType)
 {
     char cmd[32];
-    
-    if(physicalType == EU434)sendCommand("AT+DR=EU433\r\n");
-    else if(physicalType == EU868)sendCommand("AT+DR=EU868\r\n");
-    else if(physicalType == US915)sendCommand("AT+DR=US915\r\n");
-    else if(physicalType == AU920)sendCommand("AT+DR=AU920\r\n");
+    const char *str;
+
+    if ((physicalType <= UNINIT) && (physicalType >= UNDEF)) {
+      myType = UNINIT;
+      debugPrint("Unknown datarate\n");
+      return false;
+    }
+
+    myType = physicalType;
+    sendCommand(F("AT+DR="));
+//    str = (const char*)(physTypeStr[(int)myType]);
+    sendCommand(physTypeStr[myType]);
+//    sendCommand(str);
+    sendCommand(F("\r\n"));
+//    if(physicalType == EU434)sendCommand("AT+DR=EU433\r\n");
+//    else if(physicalType == EU868)sendCommand("AT+DR=EU868\r\n");
+//    else if(physicalType == US915)sendCommand("AT+DR=US915\r\n");
+//    else if(physicalType == AU920)sendCommand("AT+DR=AU920\r\n");
 #if _DEBUG_SERIAL_
     loraDebugPrint(DEFAULT_DEBUGTIME);
 #endif
@@ -184,6 +199,15 @@ void LoRaWanClass::setAdaptiveDataRate(bool command)
 #if _DEBUG_SERIAL_
     loraDebugPrint(DEFAULT_DEBUGTIME);
 #endif
+    delay(DEFAULT_TIMEWAIT);
+}
+
+void LoRaWanClass::getChannel(void)
+{
+    sendCommand("AT+CH\r\n");
+    
+    loraDebugPrint(DEFAULT_DEBUGTIME);
+
     delay(DEFAULT_TIMEWAIT);
 }
 
@@ -238,20 +262,34 @@ void LoRaWanClass::setChannel(unsigned char channel, float frequency, _data_rate
 bool LoRaWanClass::transferPacket(char *buffer, unsigned char timeout)
 {
     unsigned char length = strlen(buffer);
+    int count;
     
     while(SerialLoRa.available())SerialLoRa.read();
     
     sendCommand("AT+MSG=\"");
     for(unsigned char i = 0; i < length; i ++)SerialLoRa.write(buffer[i]);
     sendCommand("\"\r\n");
-    
-    memset(_buffer, 0, BEFFER_LENGTH_MAX);
-    readBuffer(_buffer, BEFFER_LENGTH_MAX, timeout);
+
+    while (true) {
+      memset(_buffer, 0, BEFFER_LENGTH_MAX);
+      count = readLine(_buffer, BEFFER_LENGTH_MAX, timeout);
+      if (count == 0)
+        continue;
+      // handle timout!
 #if _DEBUG_SERIAL_    
-    SerialUSB.print(_buffer);
-#endif    
-    if(strstr(_buffer, "+MSG: Done"))return true;
-    return false;
+      SerialUSB.print(_buffer);
+#endif  
+      if (strstr(_buffer, "+MSG: Done"))
+        return true;
+    }
+       
+//    memset(_buffer, 0, BEFFER_LENGTH_MAX);
+//    readBuffer(_buffer, BEFFER_LENGTH_MAX, timeout);
+//#if _DEBUG_SERIAL_    
+//    SerialUSB.print(_buffer);
+//#endif    
+//    if(strstr(_buffer, "+MSG: Done"))return true;
+//    return false;
 }
 
 bool LoRaWanClass::transferPacket(unsigned char *buffer, unsigned char length, unsigned char timeout)
@@ -280,25 +318,70 @@ bool LoRaWanClass::transferPacket(unsigned char *buffer, unsigned char length, u
 bool LoRaWanClass::transferPacketWithConfirmed(char *buffer, unsigned char timeout)
 {
     unsigned char length = strlen(buffer);
+    int i;
+    bool sentOK;
+
+    sentOK = false;
     
-    while(SerialLoRa.available())SerialLoRa.read();
+    while(SerialLoRa.available())
+      SerialLoRa.read();
     
     sendCommand("AT+CMSG=\"");
     for(unsigned char i = 0; i < length; i ++)SerialLoRa.write(buffer[i]);
     sendCommand("\"\r\n");
-    
+
+#ifdef deadcode
     memset(_buffer, 0, BEFFER_LENGTH_MAX);
-    readBuffer(_buffer, BEFFER_LENGTH_MAX, timeout);
+    i = readBuffer(_buffer, BEFFER_LENGTH_MAX, timeout);
+    _buffer[i] = 0;
 #if _DEBUG_SERIAL_    
     SerialUSB.print(_buffer);
 #endif      
-    if(strstr(_buffer, "+CMSG: ACK Received"))return true;
-    return false;
+    if(strstr(_buffer, "+CMSG: ACK Received"))
+      return true;
+    else
+      return false;
+#endif
+      
+    while (true) {
+      memset(_buffer, 0, BEFFER_LENGTH_MAX);
+      i = readLine(_buffer, BEFFER_LENGTH_MAX, timeout);
+      if (i == 0)
+        continue;
+      _buffer[i] = 0;
+        
+      // !!! handle timeout
+#if _DEBUG_SERIAL_    
+      SerialUSB.print(_buffer);
+#endif  
+      if (strstr(_buffer, "+CMSG: Start"))
+        continue;
+      if (strstr(_buffer, "+CMSG: Wait ACK"))
+        continue;
+      if (strstr(_buffer, "+CMSG: TX"))
+        continue;
+      if (strstr(_buffer, "+CMSG: RXWIN"))
+        continue;
+      if (strstr(_buffer, "+CMSG: No free channel"))
+        break;
+      if (strstr(_buffer, "+CMSG: Done"))
+        break;
+
+      if (strstr(_buffer, "+CMSG: ACK Received")) {
+        sentOK = true;
+        continue;
+      }
+      SerialUSB.print("Result didn't match anything I expected.\n");
+    }    
+
+    return sentOK;
 }
 
 bool LoRaWanClass::transferPacketWithConfirmed(unsigned char *buffer, unsigned char length, unsigned char timeout)
 {
     char temp[2] = {0};
+    int i;
+    unsigned char *ptr;
     
     while(SerialLoRa.available())SerialLoRa.read();
     
@@ -309,14 +392,24 @@ bool LoRaWanClass::transferPacketWithConfirmed(unsigned char *buffer, unsigned c
         SerialLoRa.write(temp); 
     }
     sendCommand("\"\r\n");
-#if _DEBUG_SERIAL_    
-    SerialUSB.print(_buffer);
-#endif      
+#if _DEBUG_SERIAL_   
+    ptr = buffer;
+    for (i = 0; i < length; i++)
+      SerialUSB.print(*(ptr++));
+     
+    SerialUSB.println("");
+#endif
+      
     memset(_buffer, 0, BEFFER_LENGTH_MAX);
-    readBuffer(_buffer, BEFFER_LENGTH_MAX, timeout);
+    i = readBuffer(_buffer, BEFFER_LENGTH_MAX, timeout);
+    _buffer[i] = 0;
     
-    if(strstr(_buffer, "+CMSGHEX: ACK Received"))return true;
-    return false;
+    SerialUSB.print(_buffer);
+    
+    if(strstr(_buffer, "+CMSGHEX: ACK Received"))
+      return true;
+    else
+      return false;
 }
 
 short LoRaWanClass::receivePacket(char *buffer, short length, short *rssi)
@@ -484,6 +577,13 @@ void LoRaWanClass::setConfirmedMessageRetryTime(unsigned char time)
     delay(DEFAULT_TIMEWAIT);    
 }
 
+void LoRaWanClass::getReceiveWindowFirst(void)
+{
+    sendCommand("AT+RXWIN1\r\n");    
+    loraDebugPrint(DEFAULT_DEBUGTIME);
+    delay(DEFAULT_TIMEWAIT);
+}
+
 void LoRaWanClass::setReceiveWindowFirst(bool command)
 {
     if(command)
@@ -499,13 +599,17 @@ void LoRaWanClass::setReceiveWindowFirst(unsigned char channel, float frequency)
 {
     char cmd[32];
     
-    if(channel > 16) channel = 16;
+//    if(channel > 16) channel = 16;
     
     memset(cmd, 0, 32);
-    sprintf(cmd, "AT+RXWIN1=%d,%d.%d\r\n", channel, (short)frequency, short(frequency * 10) % 10);
+    if (frequency == 0)
+      sprintf(cmd, "AT+RXWIN1=%d,0\r\n", channel);
+    else
+      sprintf(cmd, "AT+RXWIN1=%d,%d.%d\r\n", channel, (short)frequency, short(frequency * 10) % 10);
     sendCommand(cmd);
+    SerialUSB.print(cmd);
 #if _DEBUG_SERIAL_
-    loraDebugPrint(DEFAULT_DEBUGTIME);
+    loraDebugPrint(DEFAULT_DEBUGTIME * 4);        // this can have a lot of data to dump
 #endif
     delay(DEFAULT_TIMEWAIT);
 }
@@ -791,17 +895,27 @@ short LoRaWanClass::getBatteryVoltage(void)
 }
 
 // ??? I think this essentially connects the serial port to the LoRa module.
-//  !!! Note that there is no way to exit from this
+// @@@ typing a "~" will exit
 //
 void LoRaWanClass::loraDebug(void)
 {
+    char c;
+    
     while (true) {
-      if(SerialUSB.available())SerialLoRa.write(SerialUSB.read());
+      if(SerialUSB.available()) {
+        c = SerialUSB.read();
+        if (c == '~')
+          return;
+        SerialLoRa.write(c);
+      }
       if(SerialLoRa.available())SerialUSB.write(SerialLoRa.read());
     }
 }
 
 #if _DEBUG_SERIAL_
+//
+//  timeout is the total amount of time allowed for collecting data
+//  Would it make more sense if it was the time w/o a character?
 void LoRaWanClass::loraDebugPrint(unsigned char timeout)
 {
     unsigned long timerStart, timerEnd;
@@ -815,6 +929,7 @@ void LoRaWanClass::loraDebugPrint(unsigned char timeout)
           SerialUSB.write(c = SerialLoRa.read()); 
           if (c == '\n')
             return;                 // !!! This won't work for commands that return multiple lines. 
+          timerStart = millis();
         }
         
         timerEnd = millis();
@@ -825,9 +940,17 @@ void LoRaWanClass::loraDebugPrint(unsigned char timeout)
 }
 #endif
 
-void LoRaWanClass::sendCommand(char *command)
+void LoRaWanClass::debugPrint(char *str) {
+  SerialUSB.print(str);
+}
+
+void LoRaWanClass::sendCommand(const char *command)
 {
     SerialLoRa.print(command);
+}
+
+void LoRaWanClass::sendCommand(const __FlashStringHelper* command) {
+  SerialLoRa.print(command);
 }
 
 short LoRaWanClass::readBuffer(char *buffer, short length, unsigned char timeout)
@@ -870,6 +993,7 @@ short LoRaWanClass::readLine(char *buffer, short length, unsigned char timeout)
                 buffer[i ++] = c;
                 if (c == '\n')
                   break;
+                timerStart = millis();
             }  
         }
         if (c == '\n')

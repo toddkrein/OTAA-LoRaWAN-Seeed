@@ -39,8 +39,8 @@
 #define _DEBUG_SERIAL_      1
 //#define DEFAULT_TIMEOUT     5 // second
 #define DEFAULT_TIMEOUT     3 // second
-#define DEFAULT_TIMEWAIT    100 // milliseconds to wait after issuing command via serial
-#define DEFAULT_DEBUGTIME   250 // milliseconds to wait for a response after command
+#define DEFAULT_TIMEWAIT    200 // milliseconds to wait after issuing command via serial
+#define DEFAULT_DEBUGTIME   500 // milliseconds to wait for a response after command
 
 #define BATTERY_POWER_PIN    A4
 #define CHARGE_STATUS_PIN    A5
@@ -51,7 +51,7 @@
 #define kLOCAL_BUFF_MAX     64
 
 enum _class_type_t { CLASS_A = 0, CLASS_C };
-enum _physical_type_t { EU434 = 0, EU868, US915, AU920 };
+enum _physical_type_t { UNINIT = -1, EU434, EU868, US915, US915HYBRID, AU915, AS923, CN470, KR920, CN470PREQUEL, STE920, UNDEF };
 enum _device_mode_t { LWABP = 0, LWOTAA, TEST };
 enum _otaa_join_cmd_t { JOIN = 0, FORCE };
 enum _window_delay_t { RECEIVE_DELAY1 = 0, RECEIVE_DELAY2, JOIN_ACCEPT_DELAY1, JOIN_ACCEPT_DELAY2 };
@@ -176,7 +176,7 @@ class LoRaWanClass
          *  
          *  \return Return null.
          */        
-        void setDataRate(_data_rate_t dataRate = DR0, _physical_type_t physicalType = EU434); 
+        bool setDataRate(_data_rate_t dataRate = DR0, _physical_type_t physicalType = EU434); 
         
         /**
          *  \brief ON/OFF adaptive data rate mode
@@ -213,6 +213,7 @@ class LoRaWanClass
          *  
          *  \return Return null.
          */
+        void getChannel(void);
         void setChannel(unsigned char channel, float frequency);
         /**
          *  \brief Set the channel parameter
@@ -350,6 +351,7 @@ class LoRaWanClass
          *  
          *  \return Return null
          */
+        void getReceiveWindowFirst(void);
         void setReceiveWindowFirst(bool command);
         /**
          *  \brief Set receice window 1 channel mapping
@@ -473,7 +475,7 @@ class LoRaWanClass
 #if _DEBUG_SERIAL_
         void loraDebugPrint(unsigned char timeout);  
 #endif  
-
+        void debugPrint(char *str);
         /**
          *  \brief Read battery voltage
          *  
@@ -483,7 +485,8 @@ class LoRaWanClass
         
         
     private:
-        void sendCommand(char *command);
+        void sendCommand(const char *command);
+        void sendCommand(const __FlashStringHelper* command);
         short readBuffer(char* buffer, short length, unsigned char timeout = DEFAULT_TIMEOUT);
         short readLine(char* buffer, short length, unsigned char timeout = DEFAULT_TIMEOUT);
         short waitForResponse(char* response, unsigned char timeout = DEFAULT_TIMEOUT);
@@ -491,6 +494,7 @@ class LoRaWanClass
         
         char _buffer[256];
         short debug;
+        _physical_type_t myType;
 
 };
 
